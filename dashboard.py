@@ -230,14 +230,18 @@ if data:
     gb.configure_selection(selection_mode="single", use_checkbox=True)
     
     # Add conditional cell styles for columns ending with 'time'
-    cell_style_js = (
-        "function(params) { "
-        "if (params.value === 0) { return { backgroundColor: 'rgba(255, 0, 0, 0.3)' }; } "
-        "else { return {}; } }"
-    )
+    highlight_zero = JsCode("""
+    function(params) {
+         if (params.value === 0) {
+             return { backgroundColor: 'rgba(255, 0, 0, 0.3)' };
+         }
+            return {};
+    }
+    """)
+
     for col in df.columns:
         if col.endswith("time"):
-            gb.configure_column(col, cellStyle=cell_style_js)
+            gb.configure_column(col, cellStyle=highlight_zero)
             
     gridOptions = gb.build()
 
