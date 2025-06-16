@@ -47,10 +47,36 @@ NAMESPACE = "numpex-pc5/wp2-co-design"
 REPO = "g5k-testing"
 PROJECT_ID = "60556"
 BRANCH = "main"
-FOLDER = "results/proxy-geos-hc"
 GITLAB_ROOT = "https://gitlab.inria.fr"
 GITLAB_API = f"{GITLAB_ROOT}/api/v4/projects/{PROJECT_ID}/repository"
 
+# List all the subfolders inside the "path" folder that contain at least one JSON file
+def list_sufolders_with_json_files(path="results"):
+    matching_folders = []
+
+    def recurse(current_path):
+        url = f"{GITLAB_API}/tree"
+        params = {"path": current_path, "per_page": 100, "recursive": False}
+        r = requests.get(url, params=params)
+        r.raise_for_status()
+        items = r.json()
+
+        # Don't include the root folder itself
+        is_root = current_path == path
+
+        has_json = any(item["type"] == "blob" and item["name"].endswith(".json") for item in items)
+        if has_json and not is_root:
+            # Strip the leading "results/" prefix
+            relative_path = current_path[len(path) + 1:]  # +1 to remove the "/"
+            matching_folders.append(relative_path)
+
+        subfolders = [item["path"] for item in items if item["type"] == "tree"]
+        for folder in subfolders:
+            recurse(folder)
+
+    recurse(path)
+    return sorted(matching_folders)
+    
 # List all the subfolders inside the "path" folder of the Gitlab repo
 def list_subfolders(path="results"):
     url = f"{GITLAB_API}/tree"
@@ -153,7 +179,7 @@ st.set_page_config(layout="wide")
 st.title("📊 NumPEx Exa-DI: Continuous Performance Benchmark on Grid5000")
 
 # Step 1/ allow the user to select a particular app/subfolder
-apps = list_subfolders()
+apps = list_subfolders_with_json_files()
 if not apps:
     st.error("No app folders found under 'results' tree.")
     st.stop()
@@ -201,6 +227,22 @@ if data:
     df = df[cols]    # Configure grid options to enable single row selection
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
+    
+    # Add conditional cell styles for columns ending with 'time'
+    for col in df.columns:
+        if col.endswith("time"):
+            gb.configure_column(
+                col,
+                cellStyle="""
+                function(params) {
+                    if (params.value === 0) {
+                        return { 'backgroundColor': 'rgba(255, 0, 0, 0.3)' };
+                    }    
+                    return {};
+                }
+                """
+            )
+            
     gridOptions = gb.build()
 
     # Display the grid
