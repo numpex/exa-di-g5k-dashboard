@@ -247,7 +247,7 @@ if data:
     gridOptions = gb.build()
 
     # Display the grid
-    grid_response = AgGrid(df, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True)
+    grid_response = AgGrid(df, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True, allow_unsafe_jscode=True)  # <-- Latest is required for JsCode to work
     
     # Step 5: allow the user to select a row, and trigger the plot of history graph for the selected configuration
     selected = grid_response.get('selected_rows', [])
