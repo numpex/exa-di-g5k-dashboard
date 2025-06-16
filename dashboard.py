@@ -39,6 +39,7 @@ import requests
 import json
 import base64
 from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid.shared import JsCode
 import altair as alt
 import urllib.parse
 
