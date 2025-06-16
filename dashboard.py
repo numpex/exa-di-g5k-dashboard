@@ -51,7 +51,7 @@ GITLAB_ROOT = "https://gitlab.inria.fr"
 GITLAB_API = f"{GITLAB_ROOT}/api/v4/projects/{PROJECT_ID}/repository"
 
 # List all the subfolders inside the "path" folder that contain at least one JSON file
-def list_sufolders_with_json_files(path="results"):
+def list_subfolders_with_json_files(path="results"):
     matching_folders = []
 
     def recurse(current_path):
