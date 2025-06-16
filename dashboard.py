@@ -49,9 +49,10 @@ PROJECT_ID = "60556"
 BRANCH = "main"
 GITLAB_ROOT = "https://gitlab.inria.fr"
 GITLAB_API = f"{GITLAB_ROOT}/api/v4/projects/{PROJECT_ID}/repository"
+RESULTS_ROOT = "results"
 
 # List all the subfolders inside the "path" folder that contain at least one JSON file
-def list_subfolders_with_json_files(path="results"):
+def list_subfolders_with_json_files(path=RESULTS_ROOT):
     matching_folders = []
 
     def recurse(current_path):
@@ -210,7 +211,7 @@ if not json_files:
 # Step 3: Download each JSON using raw URLs
 data = []
 for filename in json_files:
-    raw_url = f"{GITLAB_ROOT}/{NAMESPACE}/{REPO}/-/raw/{BRANCH}/{selected_app}/{filename}"
+    raw_url = f"{GITLAB_ROOT}/{NAMESPACE}/{REPO}/-/raw/{BRANCH}/{RESULTS_ROOT}/{selected_app}/{filename}"
     try:
         response = requests.get(raw_url)
         response.raise_for_status()
