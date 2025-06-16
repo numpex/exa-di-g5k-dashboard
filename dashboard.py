@@ -210,7 +210,7 @@ if not json_files:
 # Step 3: Download each JSON using raw URLs
 data = []
 for filename in json_files:
-    raw_url = f"{GITLAB_ROOT}/{NAMESPACE}/{REPO}/-/raw/{BRANCH}/{FOLDER}/{filename}"
+    raw_url = f"{GITLAB_ROOT}/{NAMESPACE}/{REPO}/-/raw/{BRANCH}/{selected_app}/{filename}"
     try:
         response = requests.get(raw_url)
         response.raise_for_status()
