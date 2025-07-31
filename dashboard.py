@@ -127,6 +127,64 @@ def plot_history(df):
 
     st.altair_chart(chart, use_container_width=True)
 
+def plot_history2(df):
+    """
+    Plot a stacked bar chart showing initial_time and compute_time per commit date,
+    with red bars if test_result is False.
+    
+    Args:
+        df (pd.DataFrame): DataFrame with columns ['date', 'initial_time', 'compute_time', 'test_result']
+    """
+    # Create a "Time Type" long format and keep test_result
+    df_long = df.melt(
+        id_vars=["date", "test_result"],
+        value_vars=["initial_time", "compute_time"],
+        var_name="Time Type",
+        value_name="Time (s)"
+    )
+
+    # Define a new column for coloring
+    def color_category(row):
+        if row['test_result'] is False:
+            return f"FAILED - {row['Time Type']}"
+        else:
+            return row['Time Type']
+
+    df_long["color_category"] = df_long.apply(color_category, axis=1)
+
+    # Define custom color scale: red for failed, default colors for others
+    color_scale = alt.Scale(domain=[
+        "initial_time", "compute_time",
+        "FAILED - initial_time", "FAILED - compute_time"
+    ], range=[
+        "#1f77b4", "#2ca02c",  # blue and green
+        "red", "darkred"       # red shades for failures
+    ])
+
+    base = alt.Chart(df_long).encode(
+        x=alt.X('date:T',
+                title='Date',
+                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
+        y=alt.Y('Time (s):Q', title='Time (seconds)'),
+        color=alt.Color('color_category:N', scale=color_scale, title='Time Type'),
+        tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
+    )
+
+    bars = base.mark_bar()
+
+    # Add trendlines (just for successful runs)
+    trendlines = alt.Chart(df_long[df_long['test_result'] != False]).transform_regression(
+        'date', 'Time (s)', groupby=['Time Type'], method='linear'
+    ).mark_line(size=3, strokeDash=[5, 5])
+
+    chart = (bars + trendlines).properties(
+        width=700,
+        height=350,
+        title="Performance History per Commit"
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+    
 # Parse the history of commits for a JSON file and then call plot_history()
 def parse_file_history(file):
     # 1. Get commits touching the file
@@ -151,13 +209,19 @@ def parse_file_history(file):
         if file_resp.status_code == 200:
             try:
                 json_data = file_resp.json()
-                initial_time = float(json_data.get("initial_time", 0))
-                compute_time = float(json_data.get("compute_time", 0))
-                data.append({
-                    "date": commit_date,
-                    "initial_time": initial_time,
-                    "compute_time": compute_time
-                })
+                record = {"date": commit_date}
+                for key, value in json_data.items():
+                    if isinstance(value, (int, float, str, bool)):
+                        record[key] = value
+                data.append(record)
+                #json_data = file_resp.json()
+                #initial_time = float(json_data.get("initial_time", 0))
+                #compute_time = float(json_data.get("compute_time", 0))
+                #data.append({
+                #    "date": commit_date,
+                #    "initial_time": initial_time,
+                #    "compute_time": compute_time
+                #})
             except Exception as e:
                 # Could not parse JSON or fields; skip this commit
                 print(f"Skipping commit {sha} due to parse error: {e}")
