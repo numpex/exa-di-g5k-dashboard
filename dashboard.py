@@ -133,19 +133,24 @@ def plot_history2(df):
     with red bars if test_result is False. Missing or absent test_result values are considered True.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns ['date', 'initial_time', 'compute_time']
-                           Optionally, it may contain 'test_result', which may also be partially missing.
+        df (pd.DataFrame): DataFrame with at least the columns:
+            - 'date' (datetime or ISO string),
+            - 'initial_time', 'compute_time' (floats),
+            - optional 'test_result' (bool or missing)
     """
-    df = df.copy()  # Avoid mutating the original
-    st.write("Data sample:", df.head())
-    
-    # Ensure test_result exists and missing values are treated as True
+    df = df.copy()
+
+    # Convert date to datetime if needed
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df = df.dropna(subset=['date'])  # Drop rows with invalid date
+
+    # Ensure 'test_result' exists and fill missing values as True
     if 'test_result' not in df.columns:
         df['test_result'] = True
     else:
         df['test_result'] = df['test_result'].fillna(True)
 
-    # Convert to long format for stacking
+    # Melt for stacked bar format
     df_long = df.melt(
         id_vars=["date", "test_result"],
         value_vars=["initial_time", "compute_time"],
@@ -159,27 +164,27 @@ def plot_history2(df):
         axis=1
     )
 
-    # Color mapping
-    color=alt.Color('color_category:N', title='Time Type')
-
+    # Use Altair's default color mapping (no fixed scale to avoid mismatch issues)
     base = alt.Chart(df_long).encode(
-        x=alt.X('date:T',
-                title='Date',
-                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
+        x=alt.X('date:T', title='Date', axis=alt.Axis(labelAngle=0)),
         y=alt.Y('Time (s):Q', title='Time (seconds)'),
-        color=alt.Color('color_category:N', scale=color_scale, title='Time Type'),
+        color=alt.Color('color_category:N', title='Time Type'),
         tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
     )
 
     bars = base.mark_bar()
 
-    # Trendlines only for successful runs
-    df_trend = df_long[df_long['test_result'] != False]
-    trendlines = alt.Chart(df_trend).transform_regression(
-        'date', 'Time (s)', groupby=['Time Type'], method='linear'
-    ).mark_line(size=3, strokeDash=[5, 5])
+    # Add regression trendlines only for successful test runs
+    has_enough_data = df_long[df_long['test_result'] != False].shape[0] > 1
+    if has_enough_data:
+        trendlines = alt.Chart(df_long[df_long['test_result'] != False]).transform_regression(
+            'date', 'Time (s)', groupby=['Time Type']
+        ).mark_line(size=3, strokeDash=[5, 5])
+        chart = bars + trendlines
+    else:
+        chart = bars
 
-    chart = (bars + trendlines).properties(
+    chart = chart.properties(
         width=700,
         height=350,
         title="Performance History per Commit"
