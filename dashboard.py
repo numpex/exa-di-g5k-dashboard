@@ -255,7 +255,7 @@ if data:
         if col.endswith("_time"):
             gb.configure_column(col, cellStyle=highlight_zero)
         elif col.endswith("_result"):
-        gb.configure_column(col, cellStyle=highlight_false_result)    
+            gb.configure_column(col, cellStyle=highlight_false_result)    
         
     gridOptions = gb.build()
 
