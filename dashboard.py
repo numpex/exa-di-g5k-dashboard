@@ -129,63 +129,46 @@ def plot_history(df):
 
 def plot_history2(df):
     """
-    Plot a stacked bar chart showing initial_time and compute_time per commit date,
-    with red bars if test_result is False. Missing or absent test_result values are considered True.
-
-    Args:
-        df (pd.DataFrame): DataFrame with at least the columns:
-            - 'date' (datetime or ISO string),
-            - 'initial_time', 'compute_time' (floats),
-            - optional 'test_result' (bool or missing)
+    Plot grouped bar chart of initial_time and compute_time per date,
+    using red color when test_result is False (if present).
+    Missing test_result values are treated as True.
     """
+
     df = df.copy()
 
-    # Convert date to datetime if needed
+    # Ensure datetime and fill missing test_result
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    df = df.dropna(subset=['date'])  # Drop rows with invalid date
-
-    # Ensure 'test_result' exists and fill missing values as True
     if 'test_result' not in df.columns:
         df['test_result'] = True
     else:
         df['test_result'] = df['test_result'].fillna(True)
 
-    # Melt for stacked bar format
-    df_long = df.melt(
-        id_vars=["date", "test_result"],
-        value_vars=["initial_time", "compute_time"],
-        var_name="Time Type",
-        value_name="Time (s)"
-    )
+    # Create one row per bar (like melt but manually, for clarity)
+    rows = []
+    for _, row in df.iterrows():
+        for col in ['initial_time', 'compute_time']:
+            rows.append({
+                'date': row['date'],
+                'Time Type': col,
+                'Time (s)': row[col],
+                'test_result': row['test_result'],
+                'color': 'red' if row['test_result'] is False else col  # red if test failed
+            })
 
-    # Define color category based on test_result
-    df_long["color_category"] = df_long.apply(
-        lambda row: f"FAILED - {row['Time Type']}" if row['test_result'] is False else row['Time Type'],
-        axis=1
-    )
+    plot_df = pd.DataFrame(rows)
 
-    # Use Altair's default color mapping (no fixed scale to avoid mismatch issues)
-    base = alt.Chart(df_long).encode(
-        x=alt.X('date:T', title='Date', axis=alt.Axis(labelAngle=0)),
-        y=alt.Y('Time (s):Q', title='Time (seconds)'),
-        color=alt.Color('color_category:N', title='Time Type'),
+    # Use Altair with automatic color scale (but red will override default)
+    chart = alt.Chart(plot_df).mark_bar().encode(
+        x=alt.X('date:T', title='Date'),
+        y=alt.Y('Time (s):Q'),
+        color=alt.Color('color:N', scale=alt.Scale(
+            domain=['initial_time', 'compute_time', 'red'],
+            range=['#1f77b4', '#2ca02c', 'red']
+        )),
+        column=alt.Column('Time Type:N', title=None),  # optional: split bars by type
         tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
-    )
-
-    bars = base.mark_bar()
-
-    # Add regression trendlines only for successful test runs
-    has_enough_data = df_long[df_long['test_result'] != False].shape[0] > 1
-    if has_enough_data:
-        trendlines = alt.Chart(df_long[df_long['test_result'] != False]).transform_regression(
-            'date', 'Time (s)', groupby=['Time Type']
-        ).mark_line(size=3, strokeDash=[5, 5])
-        chart = bars + trendlines
-    else:
-        chart = bars
-
-    chart = chart.properties(
-        width=700,
+    ).properties(
+        width=300,
         height=350,
         title="Performance History per Commit"
     )
