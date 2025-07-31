@@ -160,13 +160,7 @@ def plot_history2(df):
     )
 
     # Color mapping
-    color_scale = alt.Scale(domain=[
-        "initial_time", "compute_time",
-        "FAILED - initial_time", "FAILED - compute_time"
-    ], range=[
-        "#1f77b4", "#2ca02c",  # Normal colors: blue & green
-        "red", "darkred"       # Failure colors
-    ])
+    color=alt.Color('color_category:N', title='Time Type')
 
     base = alt.Chart(df_long).encode(
         x=alt.X('date:T',
