@@ -130,12 +130,18 @@ def plot_history(df):
 def plot_history2(df):
     """
     Plot a stacked bar chart showing initial_time and compute_time per commit date,
-    with red bars if test_result is False.
+    with red bars if test_result is False (optional column).
     
     Args:
-        df (pd.DataFrame): DataFrame with columns ['date', 'initial_time', 'compute_time', 'test_result']
+        df (pd.DataFrame): DataFrame with columns ['date', 'initial_time', 'compute_time']
+                           Optionally, it may contain 'test_result'.
     """
-    # Create a "Time Type" long format and keep test_result
+    # If 'test_result' is missing, assume all are True (i.e., passed)
+    if 'test_result' not in df.columns:
+        df = df.copy()
+        df['test_result'] = True
+
+    # Create long format and include test_result
     df_long = df.melt(
         id_vars=["date", "test_result"],
         value_vars=["initial_time", "compute_time"],
@@ -143,7 +149,7 @@ def plot_history2(df):
         value_name="Time (s)"
     )
 
-    # Define a new column for coloring
+    # Define color category based on test_result
     def color_category(row):
         if row['test_result'] is False:
             return f"FAILED - {row['Time Type']}"
@@ -152,13 +158,13 @@ def plot_history2(df):
 
     df_long["color_category"] = df_long.apply(color_category, axis=1)
 
-    # Define custom color scale: red for failed, default colors for others
+    # Define custom color scale
     color_scale = alt.Scale(domain=[
         "initial_time", "compute_time",
         "FAILED - initial_time", "FAILED - compute_time"
     ], range=[
-        "#1f77b4", "#2ca02c",  # blue and green
-        "red", "darkred"       # red shades for failures
+        "#1f77b4", "#2ca02c",  # Normal colors: blue & green
+        "red", "darkred"       # Failures: red shades
     ])
 
     base = alt.Chart(df_long).encode(
@@ -172,8 +178,10 @@ def plot_history2(df):
 
     bars = base.mark_bar()
 
-    # Add trendlines (just for successful runs)
-    trendlines = alt.Chart(df_long[df_long['test_result'] != False]).transform_regression(
+    # Only include regression lines for successful test_result (or all if no such column)
+    df_trend = df_long[df_long['test_result'] != False]
+
+    trendlines = alt.Chart(df_trend).transform_regression(
         'date', 'Time (s)', groupby=['Time Type'], method='linear'
     ).mark_line(size=3, strokeDash=[5, 5])
 
