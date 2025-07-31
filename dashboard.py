@@ -208,20 +208,13 @@ def parse_file_history(file):
 
         if file_resp.status_code == 200:
             try:
+                # Parse JSON content and extract any field of a primitive type (int/float/str/bool
                 json_data = file_resp.json()
                 record = {"date": commit_date}
                 for key, value in json_data.items():
                     if isinstance(value, (int, float, str, bool)):
                         record[key] = value
                 data.append(record)
-                #json_data = file_resp.json()
-                #initial_time = float(json_data.get("initial_time", 0))
-                #compute_time = float(json_data.get("compute_time", 0))
-                #data.append({
-                #    "date": commit_date,
-                #    "initial_time": initial_time,
-                #    "compute_time": compute_time
-                #})
             except Exception as e:
                 # Could not parse JSON or fields; skip this commit
                 print(f"Skipping commit {sha} due to parse error: {e}")
@@ -233,7 +226,7 @@ def parse_file_history(file):
         df["date"] = pd.to_datetime(df["date"])
         # Sort by date ascending
         df = df.sort_values("date")
-        plot_history(df)
+        plot_history2(df)
 
 
 ###############################################################################
