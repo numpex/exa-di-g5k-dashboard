@@ -94,41 +94,6 @@ def list_subfolders(path="results"):
 # Plot Performance History Graph
 def plot_history(df):
     """
-    Plot a stacked bar chart showing initial_time and compute_time per commit date.
-
-    Args:
-        df (pd.DataFrame): DataFrame with columns ['date', 'initial_time', 'compute_time']
-    """
-    # Convert to long format for Altair stacking
-    df_long = df.melt(id_vars=["date"], value_vars=["initial_time", "compute_time"],
-                      var_name="Time Type", value_name="Time (s)")
-
-    base = alt.Chart(df_long).encode(
-        x=alt.X('date:T',
-                title='Date',
-                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
-        y=alt.Y('Time (s):Q', title='Time (seconds)'),
-        color=alt.Color('Time Type:N', title='Time Type'),
-        tooltip=['date:T', 'Time Type', 'Time (s)']
-    )
-
-    bars = base.mark_bar()
-
-    # Regression lines for each 'Time Type'
-    trendlines = base.transform_regression(
-        'date', 'Time (s)', groupby=['Time Type'], method='linear'
-    ).mark_line(size=3, strokeDash=[5,5])
-
-    chart = (bars + trendlines).properties(
-        width=700,
-        height=350,
-        title="Perfomance History per Commit"
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-
-def plot_history2(df):
-    """
     Plot bar chart of initial_time and compute_time per commit,
     with red bars for failed test results. Adds trend lines for successful runs.
     Missing test_result values are treated as True.
@@ -251,7 +216,7 @@ def parse_file_history(file):
         df["date"] = pd.to_datetime(df["date"])
         # Sort by date ascending
         df = df.sort_values("date")
-        plot_history2(df)
+        plot_history(df)
 
 
 ###############################################################################
