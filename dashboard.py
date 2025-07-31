@@ -130,22 +130,22 @@ def plot_history(df):
 def plot_history2(df):
     """
     Plot bar chart of initial_time and compute_time per commit,
-    with red bars for failed test results. Missing test_result values are treated as True.
+    with red bars for failed test results. Adds trend lines for successful runs.
+    Missing test_result values are treated as True.
     """
 
     df = df.copy()
 
-    # Fix types
+    # Ensure proper types
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df = df.dropna(subset=['date'])
 
-    # Ensure test_result exists and fill missing
     if 'test_result' not in df.columns:
         df['test_result'] = True
     else:
         df['test_result'] = df['test_result'].fillna(True)
 
-    # Build long-form table
+    # Create long-form for bars and trendlines
     rows = []
     for _, row in df.iterrows():
         for col in ['initial_time', 'compute_time']:
@@ -158,14 +158,14 @@ def plot_history2(df):
 
     plot_df = pd.DataFrame(rows)
 
-    # Let Altair derive color from Time Type and test_result
+    # Color logic
     plot_df['color_category'] = plot_df.apply(
         lambda row: f"FAILED - {row['Time Type']}" if row['test_result'] is False else row['Time Type'],
         axis=1
     )
 
-    # Let Altair auto-scale color
-    chart = alt.Chart(plot_df).mark_bar().encode(
+    # Bar chart
+    bar_chart = alt.Chart(plot_df).mark_bar().encode(
         x=alt.X('date:T',
                 title='Date',
                 axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
@@ -173,7 +173,21 @@ def plot_history2(df):
         y=alt.Y('Time (s):Q'),
         color=alt.Color('color_category:N', title='Result'),
         tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
-    ).properties(
+    )
+
+    # Trendlines only for successful runs
+    df_passed = plot_df[plot_df['test_result'] == True]
+
+    trendlines = alt.Chart(df_passed).transform_regression(
+        'date', 'Time (s)', groupby=['Time Type']
+    ).mark_line(size=3, strokeDash=[5, 5]).encode(
+        x='date:T',
+        y='Time (s):Q',
+        color=alt.Color('Time Type:N', legend=None)  # color by time type
+    )
+
+    # Combine chart
+    chart = (bar_chart + trendlines).properties(
         width=700,
         height=400,
         title="Performance History per Commit"
