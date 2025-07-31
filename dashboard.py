@@ -129,21 +129,23 @@ def plot_history(df):
 
 def plot_history2(df):
     """
-    Plot grouped bar chart of initial_time and compute_time per date,
-    using red color when test_result is False (if present).
-    Missing test_result values are treated as True.
+    Plot bar chart of initial_time and compute_time per commit,
+    with red bars for failed test results. Missing test_result values are treated as True.
     """
 
     df = df.copy()
 
-    # Ensure datetime and fill missing test_result
+    # Fix types
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df = df.dropna(subset=['date'])
+
+    # Ensure test_result exists and fill missing
     if 'test_result' not in df.columns:
         df['test_result'] = True
     else:
         df['test_result'] = df['test_result'].fillna(True)
 
-    # Create one row per bar (like melt but manually, for clarity)
+    # Build long-form table
     rows = []
     for _, row in df.iterrows():
         for col in ['initial_time', 'compute_time']:
@@ -151,25 +153,29 @@ def plot_history2(df):
                 'date': row['date'],
                 'Time Type': col,
                 'Time (s)': row[col],
-                'test_result': row['test_result'],
-                'color': 'red' if row['test_result'] is False else col  # red if test failed
+                'test_result': row['test_result']
             })
 
     plot_df = pd.DataFrame(rows)
 
-    # Use Altair with automatic color scale (but red will override default)
+    # Let Altair derive color from Time Type and test_result
+    plot_df['color_category'] = plot_df.apply(
+        lambda row: f"FAILED - {row['Time Type']}" if row['test_result'] is False else row['Time Type'],
+        axis=1
+    )
+
+    # Let Altair auto-scale color
     chart = alt.Chart(plot_df).mark_bar().encode(
-        x=alt.X('date:T', title='Date'),
+        x=alt.X('date:T',
+                title='Date',
+                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
+        xOffset='Time Type:N',
         y=alt.Y('Time (s):Q'),
-        color=alt.Color('color:N', scale=alt.Scale(
-            domain=['initial_time', 'compute_time', 'red'],
-            range=['#1f77b4', '#2ca02c', 'red']
-        )),
-        column=alt.Column('Time Type:N', title=None),  # optional: split bars by type
+        color=alt.Color('color_category:N', title='Result'),
         tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
     ).properties(
-        width=300,
-        height=350,
+        width=700,
+        height=400,
         title="Performance History per Commit"
     )
 
