@@ -6,7 +6,8 @@
 ##          "machine": "gemini-2.lyon.grid5000.fr",
 ##          "date": "2025-06-12T16:45:14+02:00",
 ##          "initial_time": 2.794,
-##          "compute_time": 0.319
+##          "compute_time": 0.319,
+##          "test_result": true
 ##        }
 ##
 ##  The JSON files are stored in a Gitlab repo, in the "results/" folder, clustered in subfolders (one per application we want to benchmark). 
@@ -240,10 +241,22 @@ if data:
     }
     """)
 
+    # Add conditional cell styles for columns ending with 'result' and whose value is false (but not empty)
+    highlight_false_result = JsCode("""
+    function(params) {
+        if (params.value === false) {
+            return { backgroundColor: 'rgba(255, 0, 0, 0.3)' }; 
+        }
+        return {};
+    }
+    """)
+
     for col in df.columns:
-        if col.endswith("time"):
+        if col.endswith("_time"):
             gb.configure_column(col, cellStyle=highlight_zero)
-            
+        elif col.endswith("_result"):
+        gb.configure_column(col, cellStyle=highlight_false_result)    
+        
     gridOptions = gb.build()
 
     # Display the grid
