@@ -137,7 +137,8 @@ def plot_history2(df):
                            Optionally, it may contain 'test_result', which may also be partially missing.
     """
     df = df.copy()  # Avoid mutating the original
-
+    st.write("Data sample:", df.head())
+    
     # Ensure test_result exists and missing values are treated as True
     if 'test_result' not in df.columns:
         df['test_result'] = True
