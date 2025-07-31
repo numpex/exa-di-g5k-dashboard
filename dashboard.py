@@ -171,7 +171,22 @@ def plot_history2(df):
                 axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
         xOffset='Time Type:N',
         y=alt.Y('Time (s):Q'),
-        color=alt.Color('color_category:N', title='Result'),
+        color=alt.Color(
+            'color_category:N',
+            title='Result',
+            scale=alt.Scale(
+                domain=[
+                    'initial_time', 'compute_time',
+                    'FAILED - initial_time', 'FAILED - compute_time'
+                ],
+                range=[
+                    '#1f77b4',  # blue
+                    '#2ca02c',  # green
+                    '#d62728',  # red
+                    '#8c564b'   # dark red
+                ]
+            )
+        ),
         tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
     )
 
@@ -183,7 +198,7 @@ def plot_history2(df):
     ).mark_line(size=3, strokeDash=[5, 5]).encode(
         x='date:T',
         y='Time (s):Q',
-        color=alt.Color('Time Type:N', legend=None)  # color by time type
+        color=alt.Color('Time Type:N', legend=None)  # match trendline color to time type
     )
 
     # Combine chart
