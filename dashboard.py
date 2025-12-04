@@ -100,7 +100,7 @@ def plot_history(df):
     """
 
     df = df.copy()
-
+    df_debug= df.copy()
     df_debug['parsed_date'] = pd.to_datetime(df_debug['date'], errors='coerce')
 
     invalid = df_debug[df_debug['parsed_date'].isna()]
