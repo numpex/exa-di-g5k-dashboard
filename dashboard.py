@@ -217,6 +217,7 @@ def parse_file_history(file):
         df["date"] = pd.to_datetime(df["date"])
         # Sort by date ascending
         df = df.sort_values("date")
+        st.dataframe(df)
         plot_history(df)
 
 
