@@ -101,6 +101,14 @@ def plot_history(df):
 
     df = df.copy()
 
+    df_debug['parsed_date'] = pd.to_datetime(df_debug['date'], errors='coerce')
+
+    invalid = df_debug[df_debug['parsed_date'].isna()]
+
+    st.subheader("Invalid date rows")
+    st.dataframe(invalid)
+
+    st.write("Original date values:", invalid['date'].tolist())
     # Ensure proper types
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df = df.dropna(subset=['date'])
@@ -110,7 +118,6 @@ def plot_history(df):
     else:
         df['test_result'] = df['test_result'].fillna(True)
 
-    st.dataframe(df)
     # Create long-form for bars and trendlines
     rows = []
     for _, row in df.iterrows():
