@@ -196,7 +196,6 @@ def parse_file_history(file):
     data = []
     for commit in commits:
         sha = commit["id"]
-        commit_date = commit["committed_date"]
 
         # 2. Get raw JSON file content at this commit
         encoded_path = urllib.parse.quote(file, safe='')
@@ -209,7 +208,7 @@ def parse_file_history(file):
             try:
                 # Parse JSON content and extract any field of a primitive type (int/float/str/bool
                 json_data = file_resp.json()
-                record = {"date": commit_date}
+                record = {}
                 for key, value in json_data.items():
                     if isinstance(value, (int, float, str, bool)):
                         record[key] = value
