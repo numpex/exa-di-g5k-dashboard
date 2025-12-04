@@ -226,6 +226,7 @@ def parse_file_history(file):
         st.write (df["date"] )
         # Sort by date ascending
         df = df.sort_values("date")
+        st.write (df["date"] )
         plot_history(df)
 
 
