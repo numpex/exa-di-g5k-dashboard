@@ -100,15 +100,7 @@ def plot_history(df):
     """
 
     df = df.copy()
-    df_debug= df.copy()
-    df_debug['parsed_date'] = pd.to_datetime(df_debug['date'], errors='coerce')
 
-    invalid = df_debug[df_debug['parsed_date'].isna()]
-
-    st.subheader("Invalid date rows")
-    st.dataframe(invalid)
-
-    st.write("Original date values:", invalid['date'].tolist())
     # Ensure proper types
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df = df.dropna(subset=['date'])
@@ -142,7 +134,7 @@ def plot_history(df):
         x=alt.X('date:T',
                 title='Date',
                 axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0),
-                scale=alt.Scale(nice='month')),
+                scale=alt.Scale(nice='day')),
         xOffset='Time Type:N',
         y=alt.Y('Time (s):Q'),
         color=alt.Color(
@@ -170,7 +162,7 @@ def plot_history(df):
     trendlines = alt.Chart(df_passed).transform_regression(
         'date', 'Time (s)', groupby=['Time Type']
     ).mark_line(size=3, strokeDash=[5, 5]).encode(
-        x=alt.X('date:T', scale=alt.Scale(nice='month')),
+        x=alt.X('date:T', scale=alt.Scale(nice='day')),
         y='Time (s):Q',
         color=alt.Color('Time Type:N', legend=None)  # match trendline color to time type
     )
@@ -220,13 +212,11 @@ def parse_file_history(file):
             print(f"Skipping commit {sha} - file not found")
 
     df = pd.DataFrame(data)
-    st.write (df["date"] )
+
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
-        st.write (df["date"] )
         # Sort by date ascending
         df = df.sort_values("date")
-        st.write (df["date"] )
         plot_history(df)
 
 
