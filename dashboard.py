@@ -222,7 +222,7 @@ def parse_file_history(file):
     df = pd.DataFrame(data)
     st.write (df["date"] )
     if not df.empty:
-        df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
         st.write (df["date"] )
         # Sort by date ascending
         df = df.sort_values("date")
