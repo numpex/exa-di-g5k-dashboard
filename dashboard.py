@@ -208,6 +208,7 @@ def parse_file_history(file):
             try:
                 # Parse JSON content and extract any field of a primitive type (int/float/str/bool
                 json_data = file_resp.json()
+                st.write("DEBUG json_data", json_data)
                 record = {}
                 for key, value in json_data.items():
                     if isinstance(value, (int, float, str, bool)):
