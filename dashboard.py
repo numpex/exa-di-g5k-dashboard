@@ -133,7 +133,8 @@ def plot_history(df):
     bar_chart = alt.Chart(plot_df).mark_bar().encode(
         x=alt.X('date:T',
                 title='Date',
-                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0)),
+                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0),
+                scale=alt.Scale(nice='month')),
         xOffset='Time Type:N',
         y=alt.Y('Time (s):Q'),
         color=alt.Color(
@@ -161,7 +162,7 @@ def plot_history(df):
     trendlines = alt.Chart(df_passed).transform_regression(
         'date', 'Time (s)', groupby=['Time Type']
     ).mark_line(size=3, strokeDash=[5, 5]).encode(
-        x='date:T',
+        x=alt.X('date:T', scale=alt.Scale(nice='month')),
         y='Time (s):Q',
         color=alt.Color('Time Type:N', legend=None)  # match trendline color to time type
     )
