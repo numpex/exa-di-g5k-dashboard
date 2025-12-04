@@ -208,7 +208,6 @@ def parse_file_history(file):
             try:
                 # Parse JSON content and extract any field of a primitive type (int/float/str/bool
                 json_data = file_resp.json()
-                st.write("DEBUG json_data", json_data)
                 record = {}
                 for key, value in json_data.items():
                     if isinstance(value, (int, float, str, bool)):
@@ -221,8 +220,10 @@ def parse_file_history(file):
             print(f"Skipping commit {sha} - file not found")
 
     df = pd.DataFrame(data)
+    st.write (df["date"] )
     if not df.empty:
         df["date"] = pd.to_datetime(df["date"])
+        st.write (df["date"] )
         # Sort by date ascending
         df = df.sort_values("date")
         plot_history(df)
