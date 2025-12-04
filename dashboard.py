@@ -110,6 +110,7 @@ def plot_history(df):
     else:
         df['test_result'] = df['test_result'].fillna(True)
 
+    st.dataframe(df)
     # Create long-form for bars and trendlines
     rows = []
     for _, row in df.iterrows():
@@ -217,7 +218,6 @@ def parse_file_history(file):
         df["date"] = pd.to_datetime(df["date"])
         # Sort by date ascending
         df = df.sort_values("date")
-        st.dataframe(df)
         plot_history(df)
 
 
