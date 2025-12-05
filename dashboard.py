@@ -177,24 +177,25 @@ def plot_history(df):
 
     st.altair_chart(chart, use_container_width=True)
 
-def detect_step_trend(series, threshold):
+def detect_step_trend(series, rel_threshold):
     """
-    Detect step-like segments in a time series.
-    Always returns a series of same length as input.
+    Detect step-like segments in a time series using **relative threshold**.
+    rel_threshold: fraction, e.g., 0.1 = 10%
+    Returns a series of same length as input.
     """
     if len(series) == 0:
         return pd.Series([], index=series.index)
 
     segments = []
-    # Start first segment with first value
     start_idx = 0
 
     for i in range(1, len(series)):
-        if abs(series.iloc[i] - series.iloc[i-1]) > threshold:
+        # Relative change
+        change = abs(series.iloc[i] - series.iloc[i - 1]) / max(series.iloc[i - 1], 1e-8)
+        if change > rel_threshold:
             # Flush previous segment
             seg_value = series.iloc[start_idx:i].mean()
             segments.extend([seg_value] * (i - start_idx))
-            # Start new segment
             start_idx = i
 
     # Flush last segment
@@ -206,11 +207,10 @@ def detect_step_trend(series, threshold):
 
 def plot_history_new(df):
     """
-    Plot performance history with:
+    Plot performance history:
     - initial_time stacked over compute_time
-    - step-trendline for compute_time
-    - step-trendline for total_time
-    Interactive sliders allow tuning thresholds for detecting steps.
+    - step trendlines for compute_time and total_time
+    - relative thresholds (percentage) adjustable via sidebar sliders
     Assumes df is already sorted by 'date'.
     """
 
@@ -225,16 +225,21 @@ def plot_history_new(df):
     # Compute total time
     df["total_time"] = df["initial_time"] + df["compute_time"]
 
-    # --- Streamlit sliders ---
+    # --- Streamlit sliders (show as percentage) ---
     st.sidebar.subheader("Step Trendline Settings")
-    compute_threshold = st.sidebar.slider(
-        "Threshold for compute_time steps",
-        min_value=0.01, max_value=50.0, value=1.0, step=0.01
+
+    compute_pct = st.sidebar.slider(
+        "Threshold for compute_time steps (%)",
+        min_value=0, max_value=100, value=10, step=1
     )
-    total_threshold = st.sidebar.slider(
-        "Threshold for total_time steps",
-        min_value=0.01, max_value=50.0, value=1.0, step=0.01
+    total_pct = st.sidebar.slider(
+        "Threshold for total_time steps (%)",
+        min_value=0, max_value=100, value=10, step=1
     )
+
+    # Convert percentage to fraction
+    compute_threshold = compute_pct / 100
+    total_threshold = total_pct / 100
 
     # --- Compute step trendlines ---
     df["compute_step"] = detect_step_trend(df["compute_time"], compute_threshold)
@@ -255,10 +260,10 @@ def plot_history_new(df):
         color=alt.Color(
             "Time Type:N",
             scale=alt.Scale(
-                domain=["compute_time", "initial_time"],  # compute_time at bottom
+                domain=["compute_time", "initial_time"],
                 range=["lightblue", "orange"]
             ),
-            sort=["compute_time", "initial_time"]  # enforce order
+            sort=["compute_time", "initial_time"]  # ensure stacking order
         ),
         opacity=alt.condition(
             alt.datum.test_result == True,
@@ -290,7 +295,7 @@ def plot_history_new(df):
     chart = (bar_chart + compute_line + total_line).properties(
         width=900,
         height=450,
-        title="Performance History with Step Trendlines"
+        title="Performance History with Step Trendlines (Relative Threshold)"
     )
 
     st.altair_chart(chart, use_container_width=True)
