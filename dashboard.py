@@ -120,17 +120,33 @@ def detect_step_trend(series, rel_threshold):
 
     return pd.Series(segments, index=series.index)
 
-
-def plot_history(df):
-    """
-    Plot performance history:
-    - initial_time stacked over compute_time
-    - step trendlines for compute_time and total_time
-    - relative thresholds (percentage) adjustable via sidebar sliders
-    Assumes df is already sorted by 'date'.
-    """
-
+# --- Cached computation of step-trendlines ---
+@st.cache_data
+def compute_step_trends(df, compute_pct, total_pct):
     df = df.copy()
+    df["total_time"] = df["initial_time"] + df["compute_time"]
+    df["compute_step"] = detect_step_trend(df["compute_time"], compute_pct / 100)
+    df["total_step"] = detect_step_trend(df["total_time"], total_pct / 100)
+    return df
+
+# --- Cached long-form dataframe for stacked bars ---
+@st.cache_data
+def make_bar_df(df):
+    bar_df = pd.DataFrame({
+        "date": df["date"].tolist() * 2,
+        "Time Type": ["compute_time"] * len(df) + ["initial_time"] * len(df),
+        "Time (s)": df["compute_time"].tolist() + df["initial_time"].tolist(),
+        "test_result": df["test_result"].tolist() * 2
+    })
+    stack_order = {"compute_time": 0, "initial_time": 1}
+    bar_df["stack_order"] = bar_df["Time Type"].map(stack_order)
+    return bar_df
+
+# --- Main plotting function ---
+def plot_history(df):
+    if df.empty:
+        st.warning("No data to plot")
+        return
 
     # Fill missing test results
     if "test_result" not in df.columns:
@@ -138,66 +154,30 @@ def plot_history(df):
     else:
         df["test_result"] = df["test_result"].fillna(True)
 
-    # Compute total time
-    df["total_time"] = df["initial_time"] + df["compute_time"]
-
-    # --- Streamlit sliders (show as percentage) ---
+    # --- Sliders ---
     st.sidebar.subheader("Step Trendline Settings")
+    compute_pct = st.sidebar.slider("Threshold for compute_time steps (%)", 0, 100, 10, 1)
+    total_pct = st.sidebar.slider("Threshold for total_time steps (%)", 0, 100, 10, 1)
 
-    compute_pct = st.sidebar.slider(
-        "Threshold for compute_time steps (%)",
-        min_value=0, max_value=100, value=10, step=1
-    )
-    total_pct = st.sidebar.slider(
-        "Threshold for total_time steps (%)",
-        min_value=0, max_value=100, value=10, step=1
-    )
+    # --- Compute step-trends (cached) ---
+    df = compute_step_trends(df, compute_pct, total_pct)
 
-    # Convert percentage to fraction
-    compute_threshold = compute_pct / 100
-    total_threshold = total_pct / 100
+    # --- Long-form bar data (cached) ---
+    bar_df = make_bar_df(df)
 
-    # --- Compute step trendlines ---
-    df["compute_step"] = detect_step_trend(df["compute_time"], compute_threshold)
-    df["total_step"] = detect_step_trend(df["total_time"], total_threshold)
-
-    # --- Prepare long-form for stacked bars ---
-    bar_df = pd.DataFrame({
-        "date": df["date"].tolist() * 2,
-        "Time Type": ["compute_time"] * len(df) + ["initial_time"] * len(df),
-        "Time (s)": df["compute_time"].tolist() + df["initial_time"].tolist(),
-        "test_result": df["test_result"].tolist() * 2
-    })
-
-    # Explicit stacking order
-    stack_order = {"compute_time": 0, "initial_time": 1}
-    bar_df["stack_order"] = bar_df["Time Type"].map(stack_order)
-
-    # --- Stacked bar chart ---
+    # --- Stacked bars ---
     bar_chart = alt.Chart(bar_df).mark_bar().encode(
-        x=alt.X(
-            "date:T",
-            title="Date",
-            axis=alt.Axis(format="%d/%m", labelAngle=0)
-        ),
+        x=alt.X("date:T", title="Date", axis=alt.Axis(format="%d/%m", labelAngle=0)),
         y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
-        color=alt.Color(
-            "Time Type:N",
-            scale=alt.Scale(
-                domain=["compute_time", "initial_time"],
-                range=["lightblue", "orange"]
-            )
-        ),
-        order=alt.Order("stack_order:O"),  # guarantee stacking order
-        opacity=alt.condition(
-            alt.datum.test_result == True,
-            alt.value(1.0),
-            alt.value(0.4)
-        ),
+        color=alt.Color("Time Type:N",
+                        scale=alt.Scale(domain=["compute_time", "initial_time"],
+                                        range=["lightblue", "orange"])),
+        order=alt.Order("stack_order:O"),  # enforce stacking order
+        opacity=alt.condition(alt.datum.test_result==True, alt.value(1.0), alt.value(0.4)),
         tooltip=["date:T", "Time Type:N", "Time (s):Q", "test_result"]
     )
 
-    # --- Step trendline for compute_time ---
+    # --- Step trendlines ---
     compute_line = alt.Chart(df).mark_line(size=3).encode(
         x="date:T",
         y="compute_step:Q",
@@ -205,8 +185,6 @@ def plot_history(df):
         strokeDash=alt.value([5, 2]),
         tooltip=["date:T", "compute_step:Q"]
     )
-
-    # --- Step trendline for total_time ---
     total_line = alt.Chart(df).mark_line(size=3).encode(
         x="date:T",
         y="total_step:Q",
@@ -215,13 +193,12 @@ def plot_history(df):
         tooltip=["date:T", "total_step:Q"]
     )
 
-    # --- Combine ---
+    # --- Combine and render ---
     chart = (bar_chart + compute_line + total_line).properties(
         width=900,
         height=450,
         title="Performance History with Step Trendlines (Relative Threshold)"
     )
-
     st.altair_chart(chart, use_container_width=True)
 
 
