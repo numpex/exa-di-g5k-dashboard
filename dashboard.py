@@ -263,17 +263,31 @@ if selected_app:
         gridOptions = gb.build()
         grid_response = AgGrid(df_app, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True)
 
+        # Ensure selected_rows is always a list of dicts
         selected_rows = grid_response.get("selected_rows", [])
 
-        # Ensure it's a list
+        if isinstance(selected_rows, pd.DataFrame):
+            # Convert to list of dicts
+            selected_rows = selected_rows.to_dict("records")
+
         if isinstance(selected_rows, list) and len(selected_rows) > 0:
             selected_row = selected_rows[0]  # dict
             config_name = selected_row.get("config")
+            
             if config_name:
-                file_path = f"results/{selected_app}/{config_name}"
-                df_history = load_config_history(file_path)
-                plot_history(df_history)
+                # Use session_state to cache history per selected config
+                key = f"history_{selected_app}_{config_name}"
+                if key not in st.session_state:
+                    st.session_state[key] = load_config_history(f"results/{selected_app}/{config_name}")
+                
+                df_history = st.session_state[key]
+                
+                if df_history.empty:
+                    st.warning("No history found for this configuration.")
+                else:
+                    plot_history(df_history)
             else:
                 st.warning("Selected row has no 'config' field.")
         else:
             st.info("Select a row to see details.")
+
