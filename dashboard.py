@@ -177,146 +177,111 @@ def plot_history(df):
 
     st.altair_chart(chart, use_container_width=True)
 
+def detect_step_trend(series, threshold):
+    """
+    Detects steps in the time series:
+    A new segment starts when the change exceeds `threshold`.
+    Returns a series of the same length where each value is the step mean.
+    """
+    segments = []
+    current_segment = [series.iloc[0]]
+
+    for i in range(1, len(series)):
+        if abs(series.iloc[i] - series.iloc[i-1]) > threshold:
+            # close previous segment
+            seg_value = np.mean(current_segment)
+            segments.extend([seg_value] * len(current_segment))
+            current_segment = []
+
+        current_segment.append(series.iloc[i])
+
+    # close last segment
+    seg_value = np.mean(current_segment)
+    segments.extend([seg_value] * len(current_segment))
+
+    return pd.Series(segments, index=series.index)
+
 
 def plot_history_new(df):
-    """
-    Plot stacked performance bars (initial_time + compute_time) and trendlines:
-      - total_time linear regression (optional)
-      - step-wise flat-by-stages trendline (change-point detection)
-
-    Failed tests appear in red. Missing test_result = True.
-    """
 
     df = df.copy()
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    df = df.dropna(subset=['date'])
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
 
-    # Fill missing test_result as True
-    df['test_result'] = df.get('test_result', True)
-    df['test_result'] = df['test_result'].fillna(True)
+    # If missing test_result, assume success
+    if "test_result" not in df.columns:
+        df["test_result"] = True
+    else:
+        df["test_result"] = df["test_result"].fillna(True)
 
-    # Compute total_time
+    # Compute totals
     df["total_time"] = df["initial_time"] + df["compute_time"]
 
-    # Prepare long form for stacked bars
-    rows = []
-    for _, row in df.iterrows():
-        rows.append({
-            'date': row['date'],
-            'Time Type': 'initial_time',
-            'Time (s)': row['initial_time'],
-            'test_result': row['test_result']
-        })
-        rows.append({
-            'date': row['date'],
-            'Time Type': 'compute_time',
-            'Time (s)': row['compute_time'],
-            'test_result': row['test_result']
-        })
-        rows.append({
-            'date': row['date'],
-            'Time Type': 'total_time',
-            'Time (s)': row['total_time'],
-            'test_result': row['test_result']
-        })
-
-    plot_df = pd.DataFrame(rows)
-
-    # Color logic
-    plot_df['color_category'] = plot_df.apply(
-        lambda row: f"FAILED - {row['Time Type']}"
-        if row['test_result'] is False else row['Time Type'],
-        axis=1
+    # --- Interactive controls ---
+    st.sidebar.subheader("Trendline Segmentation Controls")
+    compute_threshold = st.sidebar.slider(
+        "Step threshold for compute_time", 
+        min_value=0.01, max_value=10.0, value=1.0, step=0.01
+    )
+    total_threshold = st.sidebar.slider(
+        "Step threshold for total_time", 
+        min_value=0.01, max_value=10.0, value=1.0, step=0.01
     )
 
-    # ------------------------------
-    # BAR CHART (stacked, as before)
-    # ------------------------------
-    bar_chart = alt.Chart(
-        plot_df[plot_df["Time Type"] != "total_time"]
-    ).mark_bar().encode(
-        x=alt.X('date:T',
-                title='Date',
-                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0),
-                scale=alt.Scale(nice='day')),
-        y=alt.Y('sum(Time (s)):Q', stack='zero'),
-        color=alt.Color(
-            'color_category:N',
-            title='Result',
-            scale=alt.Scale(
-                domain=[
-                    'initial_time', 'compute_time',
-                    'FAILED - initial_time', 'FAILED - compute_time'
-                ],
-                range=[
-                    '#1f77b4',  # OK initial
-                    '#2ca02c',  # OK compute
-                    '#d62728',  # FAIL initial
-                    '#8c564b'   # FAIL compute
-                ]
-            )
+    # --- Create step trendlines ---
+    df_sorted = df.sort_values("date")
+    df_sorted["compute_step"] = detect_step_trend(df_sorted["compute_time"], compute_threshold)
+    df_sorted["total_step"] = detect_step_trend(df_sorted["total_time"], total_threshold)
+
+    # --- Prepare stacked-bar long-form ---
+    bar_df = pd.DataFrame({
+        "date": df_sorted["date"].tolist() * 2,
+        "Time Type": ["compute_time"] * len(df_sorted) + ["initial_time"] * len(df_sorted),
+        "Time (s)": df_sorted["compute_time"].tolist() + df_sorted["initial_time"].tolist(),
+        "test_result": df_sorted["test_result"].tolist() * 2
+    })
+
+    # Stacked bar chart
+    bar_chart = alt.Chart(bar_df).mark_bar().encode(
+        x=alt.X("date:T", title="Date"),
+        y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
+        color=alt.Color("Time Type:N", scale=alt.Scale(
+            domain=["compute_time", "initial_time"],
+            range=["#1f77b4", "#ff7f0e"]  # blue + orange
+        )),
+        opacity=alt.condition(
+            alt.datum.test_result == True,
+            alt.value(1.0),
+            alt.value(0.4)
         ),
-        tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
+        tooltip=["date:T", "Time Type:N", "Time (s):Q", "test_result"]
     )
 
-    # -------------------------------------------------------------
-    # TRENDLINE 1 — Total time linear regression (very simple line)
-    # -------------------------------------------------------------
-    df_passed_total = plot_df[
-        (plot_df['test_result'] == True) &
-        (plot_df['Time Type'] == 'total_time')
-    ]
-
-    trendline_linear = alt.Chart(df_passed_total).transform_regression(
-        'date', 'Time (s)'
-    ).mark_line(size=3, color='purple', strokeDash=[4, 4]).encode(
-        x='date:T',
-        y='Time (s):Q'
+    # --- Step Trendlines ---
+    compute_line = alt.Chart(df_sorted).mark_line(size=3).encode(
+        x="date:T",
+        y="compute_step:Q",
+        color=alt.value("#1f77b4"),
+        strokeDash=alt.value([5, 2]),
+        tooltip=["date:T", "compute_step:Q"]
     )
 
-    # -------------------------------------------------------------
-    # TRENDLINE 2 — Step-wise trendline (flat by stages)
-    # -------------------------------------------------------------
-    df_passed_sorted = df_passed_total.sort_values("date")
-    times = df_passed_sorted["Time (s)"].to_numpy()
-
-    # Change-point detection with PELT
-    model = rpt.Pelt(model="rbf").fit(times)
-    breakpoints = model.predict(pen=5)  # tune "pen" depending on noise level
-
-    # Build step-like segments
-    seg_rows = []
-    dates = df_passed_sorted["date"].to_numpy()
-    start = 0
-    for end in breakpoints:
-        segment_dates = dates[start:end]
-        segment_mean = times[start:end].mean()
-        for d in segment_dates:
-            seg_rows.append({
-                "date": d,
-                "Time (s)": segment_mean
-            })
-        start = end
-
-    seg_df = pd.DataFrame(seg_rows)
-
-    step_trendline = alt.Chart(seg_df).mark_line(
-        size=3, color="orange"
-    ).encode(
-        x='date:T',
-        y='Time (s):Q'
+    total_line = alt.Chart(df_sorted).mark_line(size=3).encode(
+        x="date:T",
+        y="total_step:Q",
+        color=alt.value("#000000"),
+        strokeDash=alt.value([4, 4]),
+        tooltip=["date:T", "total_step:Q"]
     )
 
-    # -------------------------------------------------------------
-    # Combine everything
-    # -------------------------------------------------------------
-    chart = (bar_chart + trendline_linear + step_trendline).properties(
+    chart = (bar_chart + compute_line + total_line).properties(
         width=800,
         height=450,
-        title="Performance History per Commit"
+        title="Performance History with Step Trendlines"
     )
 
     st.altair_chart(chart, use_container_width=True)
+
 
 # Parse the history of commits for a JSON file and then call plot_history()
 def parse_file_history(file):
