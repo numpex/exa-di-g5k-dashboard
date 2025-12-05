@@ -161,25 +161,24 @@ def plot_history(df):
     df["compute_step"] = detect_step_trend(df["compute_time"], compute_threshold)
     df["total_step"] = detect_step_trend(df["total_time"], total_threshold)
 
-    # --- Prepare long-form for stacked bars ---
-    bar_df = pd.DataFrame({
-        "date": df["date"].tolist() * 2,
-        "Time Type": ["compute_time"] * len(df) + ["initial_time"] * len(df),
-        "Time (s)": df["compute_time"].tolist() + df["initial_time"].tolist(),
-        "test_result": df["test_result"].tolist() * 2
-    })
+    # Make Time Type categorical with explicit order
+    bar_df["Time Type"] = pd.Categorical(
+        bar_df["Time Type"], categories=["compute_time", "initial_time"], ordered=True
+    )
 
-    # --- Stacked bar chart ---
     bar_chart = alt.Chart(bar_df).mark_bar().encode(
-        x=alt.X("date:T", title="Date"),
+        x=alt.X(
+            "date:T",
+            title="Date",
+            axis=alt.Axis(format='%d/%m', labelAngle=0)  # show day/month
+        ),
         y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
         color=alt.Color(
             "Time Type:N",
             scale=alt.Scale(
                 domain=["compute_time", "initial_time"],
                 range=["lightblue", "orange"]
-            ),
-            sort=["initial_time", "compute_time"]  # ensure stacking order
+            )
         ),
         opacity=alt.condition(
             alt.datum.test_result == True,
