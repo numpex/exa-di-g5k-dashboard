@@ -265,12 +265,10 @@ if selected_app:
         grid_response = AgGrid(df_app, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True)
 
         selected_rows = grid_response.get("selected_rows", [])
-        if selected_rows:
-            selected_row = selected_rows[0]
+        if selected_rows is not None and len(selected_rows) > 0:
+            selected_row = selected_rows[0]  # first selected row
             file_path = f"results/{selected_app}/{selected_row['config']}"
-
-            # Step 3: Load full history for selected config (cached)
             df_history = load_config_history(file_path)
-
-            # Step 4: Plot with sliders (no network requests)
             plot_history(df_history)
+        else:
+            st.info("Select a row to see details.")
