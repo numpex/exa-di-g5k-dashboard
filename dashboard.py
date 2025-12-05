@@ -187,17 +187,24 @@ def detect_step_trend(series, threshold):
     current_segment = [series.iloc[0]]
 
     for i in range(1, len(series)):
-        if abs(series.iloc[i] - series.iloc[i-1]) > threshold:
-            # close previous segment
-            seg_value = np.mean(current_segment)
-            segments.extend([seg_value] * len(current_segment))
+        if abs(series.iloc[i] - series.iloc[i - 1]) > threshold:
+            # Close previous segment safely
+            if len(current_segment) > 0:
+                seg_value = float(np.mean(current_segment))
+                segments.extend([seg_value] * len(current_segment))
             current_segment = []
 
         current_segment.append(series.iloc[i])
 
-    # close last segment
-    seg_value = np.mean(current_segment)
-    segments.extend([seg_value] * len(current_segment))
+    # Close last segment
+    if len(current_segment) > 0:
+        seg_value = float(np.mean(current_segment))
+        segments.extend([seg_value] * len(current_segment))
+
+    # Make sure the lengths match exactly
+    if len(segments) != len(series):
+        # Pad or trim as ultimate fallback
+        segments = segments[:len(series)] + [segments[-1]] * max(0, len(series) - len(segments))
 
     return pd.Series(segments, index=series.index)
 
