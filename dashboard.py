@@ -265,9 +265,9 @@ if selected_app:
 
         selected_rows = grid_response.get("selected_rows", [])
 
-        if selected_rows and len(selected_rows) > 0:
-            # selected_row is a dict
-            selected_row = selected_rows[0]
+        # Ensure it's a list
+        if isinstance(selected_rows, list) and len(selected_rows) > 0:
+            selected_row = selected_rows[0]  # dict
             config_name = selected_row.get("config")
             if config_name:
                 file_path = f"results/{selected_app}/{config_name}"
