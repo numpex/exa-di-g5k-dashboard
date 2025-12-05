@@ -33,12 +33,13 @@
 ##  Development done in the context of https://gitlab.inria.fr/numpex-pc5/wp2-co-design/proxy-geos-hc/-/issues/32
 ##  See https://gitlab.inria.fr/numpex-pc5/wp2-co-design/g5k-testing/-/blob/main/ARCHITECTURE.md for a comprehensive description of the technical solution
 ##
+
 import streamlit as st
 import pandas as pd
 import requests
 import json
 import urllib.parse
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+from st_aggrid import AgGrid, GridOptionsBuilder
 import altair as alt
 
 # 🔧 CONFIGURATION
@@ -67,7 +68,7 @@ def list_subfolders_with_json_files(path=RESULTS_ROOT):
         is_root = current_path == path
         has_json = any(item["type"] == "blob" and item["name"].endswith(".json") for item in items)
         if has_json and not is_root:
-            relative_path = current_path[len(path) + 1:]  # +1 to remove /
+            relative_path = current_path[len(path) + 1:]
             matching_folders.append(relative_path)
 
         for item in items:
@@ -133,7 +134,6 @@ def load_app_jsons(selected_app):
 
 @st.cache_data
 def load_config_history(file_path):
-    # Get commits touching the file
     commits_url = f"{GITLAB_API}/commits"
     commits_params = {"path": file_path}
     resp = requests.get(commits_url, params=commits_params)
@@ -144,131 +144,5 @@ def load_config_history(file_path):
     for commit in commits:
         sha = commit["id"]
         encoded_path = urllib.parse.quote(file_path, safe='')
-        file_url = f"{GITLAB_API}/files/{encoded_path}/raw"
-        file_params = {"ref": sha}
-        file_resp = requests.get(file_url, params=file_params)
-        if file_resp.status_code == 200:
-            try:
-                json_data = file_resp.json()
-                record = {k: v for k, v in json_data.items() if isinstance(v, (int, float, str, bool))}
-                data.append(record)
-            except:
-                continue
-    df = pd.DataFrame(data)
-    if not df.empty:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
-        df = df.sort_values("date")
-    return df
+        file_url = f"{GITLAB_A
 
-# ------------------------------
-#  Plotting helpers (cached for speed)
-# ------------------------------
-
-@st.cache_data
-def compute_step_trends(df, compute_pct, total_pct):
-    df = df.copy()
-    df["total_time"] = df["initial_time"] + df["compute_time"]
-    df["compute_step"] = detect_step_trend(df["compute_time"], compute_pct / 100)
-    df["total_step"] = detect_step_trend(df["total_time"], total_pct / 100)
-    return df
-
-
-@st.cache_data
-def make_bar_df(df):
-    bar_df = pd.DataFrame({
-        "date": df["date"].tolist() * 2,
-        "Time Type": ["compute_time"] * len(df) + ["initial_time"] * len(df),
-        "Time (s)": df["compute_time"].tolist() + df["initial_time"].tolist(),
-        "test_result": df["test_result"].tolist() * 2
-    })
-    stack_order = {"compute_time": 0, "initial_time": 1}
-    bar_df["stack_order"] = bar_df["Time Type"].map(stack_order)
-    return bar_df
-
-
-def plot_history(df):
-    if df.empty:
-        st.warning("No data to plot")
-        return
-
-    if "test_result" not in df.columns:
-        df["test_result"] = True
-    else:
-        df["test_result"] = df["test_result"].fillna(True)
-
-    # Sidebar sliders
-    compute_pct = st.sidebar.slider("Threshold for compute_time steps (%)", 0, 100, 10, 1)
-    total_pct = st.sidebar.slider("Threshold for total_time steps (%)", 0, 100, 10, 1)
-
-    # Step trends
-    df = compute_step_trends(df, compute_pct, total_pct)
-    bar_df = make_bar_df(df)
-
-    # Stacked bars
-    bar_chart = alt.Chart(bar_df).mark_bar().encode(
-        x=alt.X("date:T", title="Date", axis=alt.Axis(format="%d/%m", labelAngle=0)),
-        y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
-        color=alt.Color("Time Type:N",
-                        scale=alt.Scale(domain=["compute_time", "initial_time"],
-                                        range=["lightblue", "orange"])),
-        order=alt.Order("stack_order:O"),
-        opacity=alt.condition(alt.datum.test_result==True, alt.value(1.0), alt.value(0.4)),
-        tooltip=["date:T", "Time Type:N", "Time (s):Q", "test_result"]
-    )
-
-    # Step trendlines
-    compute_line = alt.Chart(df).mark_line(size=3).encode(
-        x="date:T",
-        y="compute_step:Q",
-        color=alt.value("cyan"),
-        strokeDash=alt.value([5, 2]),
-        tooltip=["date:T", "compute_step:Q"]
-    )
-
-    total_line = alt.Chart(df).mark_line(size=3).encode(
-        x="date:T",
-        y="total_step:Q",
-        color=alt.value("yellow"),
-        strokeDash=alt.value([4, 4]),
-        tooltip=["date:T", "total_step:Q"]
-    )
-
-    chart = (bar_chart + compute_line + total_line).properties(
-        width=900,
-        height=450,
-        title="Performance History with Step Trendlines (Relative Threshold)"
-    )
-    st.altair_chart(chart, use_container_width=True)
-
-
-# ------------------------------
-#  MAIN
-# ------------------------------
-
-st.set_page_config(layout="wide")
-st.title("📊 NumPEx Exa-DI: Continuous Performance Benchmark on Grid5000")
-
-# Step 1: Select app (cached)
-apps = get_apps()
-selected_app = st.selectbox("Select an application:", apps)
-
-if selected_app:
-    # Step 2: Load JSON files for selected app (cached)
-    df_app = load_app_jsons(selected_app)
-    if df_app.empty:
-        st.warning("No JSON files found for this app.")
-    else:
-        # Display table with AgGrid
-        gb = GridOptionsBuilder.from_dataframe(df_app)
-        gb.configure_selection(selection_mode="single", use_checkbox=True)
-        gridOptions = gb.build()
-        grid_response = AgGrid(df_app, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True)
-
-        selected_rows = grid_response.get("selected_rows", [])
-        if selected_rows is not None and len(selected_rows) > 0:
-            selected_row = selected_rows[0]  # first selected row
-            file_path = f"results/{selected_app}/{selected_row['config']}"
-            df_history = load_config_history(file_path)
-            plot_history(df_history)
-        else:
-            st.info("Select a row to see details.")
