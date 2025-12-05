@@ -92,90 +92,6 @@ def list_subfolders(path="results"):
     folders = [item["name"] for item in items if item["type"] == "tree"]
     return folders
 
-# Plot Performance History Graph
-def plot_history(df):
-    """
-    Plot bar chart of initial_time and compute_time per commit,
-    with red bars for failed test results. Adds trend lines for successful runs.
-    Missing test_result values are treated as True.
-    """
-
-    df = df.copy()
-
-    # Ensure proper types
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    df = df.dropna(subset=['date'])
-
-    if 'test_result' not in df.columns:
-        df['test_result'] = True
-    else:
-        df['test_result'] = df['test_result'].fillna(True)
-
-    # Create long-form for bars and trendlines
-    rows = []
-    for _, row in df.iterrows():
-        for col in ['initial_time', 'compute_time']:
-            rows.append({
-                'date': row['date'],
-                'Time Type': col,
-                'Time (s)': row[col],
-                'test_result': row['test_result']
-            })
-
-    plot_df = pd.DataFrame(rows)
-
-    # Color logic
-    plot_df['color_category'] = plot_df.apply(
-        lambda row: f"FAILED - {row['Time Type']}" if row['test_result'] is False else row['Time Type'],
-        axis=1
-    )
-
-    # Bar chart
-    bar_chart = alt.Chart(plot_df).mark_bar().encode(
-        x=alt.X('date:T',
-                title='Date',
-                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0),
-                scale=alt.Scale(nice='day')),
-        xOffset='Time Type:N',
-        y=alt.Y('Time (s):Q'),
-        color=alt.Color(
-            'color_category:N',
-            title='Result',
-            scale=alt.Scale(
-                domain=[
-                    'initial_time', 'compute_time',
-                    'FAILED - initial_time', 'FAILED - compute_time'
-                ],
-                range=[
-                    '#1f77b4',  # blue
-                    '#2ca02c',  # green
-                    '#d62728',  # red
-                    '#8c564b'   # dark red
-                ]
-            )
-        ),
-        tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
-    )
-
-    # Trendlines only for successful runs
-    df_passed = plot_df[plot_df['test_result'] == True]
-
-    trendlines = alt.Chart(df_passed).transform_regression(
-        'date', 'Time (s)', groupby=['Time Type']
-    ).mark_line(size=3, strokeDash=[5, 5]).encode(
-        x=alt.X('date:T', scale=alt.Scale(nice='day')),
-        y='Time (s):Q',
-        color=alt.Color('Time Type:N', legend=None)  # match trendline color to time type
-    )
-
-    # Combine chart
-    chart = (bar_chart + trendlines).properties(
-        width=700,
-        height=400,
-        title="Performance History per Commit"
-    )
-
-    st.altair_chart(chart, use_container_width=True)
 
 def detect_step_trend(series, rel_threshold):
     """
@@ -205,7 +121,7 @@ def detect_step_trend(series, rel_threshold):
     return pd.Series(segments, index=series.index)
 
 
-def plot_history_new(df):
+def plot_history(df):
     """
     Plot performance history:
     - initial_time stacked over compute_time
@@ -263,7 +179,7 @@ def plot_history_new(df):
                 domain=["compute_time", "initial_time"],
                 range=["lightblue", "orange"]
             ),
-            sort=["compute_time", "initial_time"]  # ensure stacking order
+            sort=["initial_time", "compute_time"]  # ensure stacking order
         ),
         opacity=alt.condition(
             alt.datum.test_result == True,
@@ -342,7 +258,7 @@ def parse_file_history(file):
         df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
         # Sort by date ascending
         df = df.sort_values("date")
-        plot_history_new(df)
+        plot_history(df)
 
 
 ###############################################################################
