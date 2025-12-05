@@ -33,17 +33,13 @@
 ##  Development done in the context of https://gitlab.inria.fr/numpex-pc5/wp2-co-design/proxy-geos-hc/-/issues/32
 ##  See https://gitlab.inria.fr/numpex-pc5/wp2-co-design/g5k-testing/-/blob/main/ARCHITECTURE.md for a comprehensive description of the technical solution
 ##
-
 import streamlit as st
 import pandas as pd
 import requests
 import json
-import base64
-from st_aggrid import AgGrid, GridOptionsBuilder
-from st_aggrid.shared import JsCode
-import altair as alt
-import ruptures as rpt
 import urllib.parse
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+import altair as alt
 
 # 🔧 CONFIGURATION
 NAMESPACE = "numpex-pc5/wp2-co-design"
@@ -54,7 +50,10 @@ GITLAB_ROOT = "https://gitlab.inria.fr"
 GITLAB_API = f"{GITLAB_ROOT}/api/v4/projects/{PROJECT_ID}/repository"
 RESULTS_ROOT = "results"
 
-# List all the subfolders inside the "path" folder that contain at least one JSON file
+# ------------------------------
+#  Utility functions
+# ------------------------------
+
 def list_subfolders_with_json_files(path=RESULTS_ROOT):
     matching_folders = []
 
@@ -65,62 +64,106 @@ def list_subfolders_with_json_files(path=RESULTS_ROOT):
         r.raise_for_status()
         items = r.json()
 
-        # Don't include the root folder itself
         is_root = current_path == path
-
         has_json = any(item["type"] == "blob" and item["name"].endswith(".json") for item in items)
         if has_json and not is_root:
-            # Strip the leading "results/" prefix
-            relative_path = current_path[len(path) + 1:]  # +1 to remove the "/"
+            relative_path = current_path[len(path) + 1:]  # +1 to remove /
             matching_folders.append(relative_path)
 
-        subfolders = [item["path"] for item in items if item["type"] == "tree"]
-        for folder in subfolders:
-            recurse(folder)
+        for item in items:
+            if item["type"] == "tree":
+                recurse(item["path"])
 
     recurse(path)
     return sorted(matching_folders)
-    
-# List all the subfolders inside the "path" folder of the Gitlab repo
-def list_subfolders(path="results"):
-    url = f"{GITLAB_API}/tree"
-    params = {"path": path, "per_page": 100}
-    r = requests.get(url, params=params)
-    r.raise_for_status()
-    items = r.json()
-    # Filter folders only
-    folders = [item["name"] for item in items if item["type"] == "tree"]
-    return folders
 
 
 def detect_step_trend(series, rel_threshold):
-    """
-    Detect step-like segments in a time series using **relative threshold**.
-    rel_threshold: fraction, e.g., 0.1 = 10%
-    Returns a series of same length as input.
-    """
     if len(series) == 0:
         return pd.Series([], index=series.index)
 
     segments = []
     start_idx = 0
-
     for i in range(1, len(series)):
-        # Relative change
         change = abs(series.iloc[i] - series.iloc[i - 1]) / max(series.iloc[i - 1], 1e-8)
         if change > rel_threshold:
-            # Flush previous segment
             seg_value = series.iloc[start_idx:i].mean()
             segments.extend([seg_value] * (i - start_idx))
             start_idx = i
-
-    # Flush last segment
     seg_value = series.iloc[start_idx:].mean()
     segments.extend([seg_value] * (len(series) - start_idx))
-
     return pd.Series(segments, index=series.index)
 
-# --- Cached computation of step-trendlines ---
+# ------------------------------
+#  Caching layers
+# ------------------------------
+
+@st.cache_data
+def get_apps():
+    return list_subfolders_with_json_files()
+
+
+@st.cache_data
+def load_app_jsons(selected_app):
+    tree_url = f"{GITLAB_API}/tree"
+    params = {"path": f"{RESULTS_ROOT}/{selected_app}", "ref": BRANCH, "per_page": 100}
+    resp = requests.get(tree_url, params=params)
+    resp.raise_for_status()
+    files = resp.json()
+    json_files = [f["name"] for f in files if f["type"] == "blob" and f["name"].endswith(".json")]
+
+    data = []
+    for filename in json_files:
+        raw_url = f"{GITLAB_ROOT}/{NAMESPACE}/{REPO}/-/raw/{BRANCH}/{RESULTS_ROOT}/{selected_app}/{filename}"
+        try:
+            r = requests.get(raw_url)
+            r.raise_for_status()
+            content = json.loads(r.text)
+            content["config"] = filename
+            data.append(content)
+        except:
+            continue
+
+    df = pd.DataFrame(data)
+    if not df.empty:
+        cols = ["config"] + [c for c in df.columns if c != "config"]
+        df = df[cols]
+    return df
+
+
+@st.cache_data
+def load_config_history(file_path):
+    # Get commits touching the file
+    commits_url = f"{GITLAB_API}/commits"
+    commits_params = {"path": file_path}
+    resp = requests.get(commits_url, params=commits_params)
+    resp.raise_for_status()
+    commits = resp.json()
+
+    data = []
+    for commit in commits:
+        sha = commit["id"]
+        encoded_path = urllib.parse.quote(file_path, safe='')
+        file_url = f"{GITLAB_API}/files/{encoded_path}/raw"
+        file_params = {"ref": sha}
+        file_resp = requests.get(file_url, params=file_params)
+        if file_resp.status_code == 200:
+            try:
+                json_data = file_resp.json()
+                record = {k: v for k, v in json_data.items() if isinstance(v, (int, float, str, bool))}
+                data.append(record)
+            except:
+                continue
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
+        df = df.sort_values("date")
+    return df
+
+# ------------------------------
+#  Plotting helpers (cached for speed)
+# ------------------------------
+
 @st.cache_data
 def compute_step_trends(df, compute_pct, total_pct):
     df = df.copy()
@@ -129,7 +172,7 @@ def compute_step_trends(df, compute_pct, total_pct):
     df["total_step"] = detect_step_trend(df["total_time"], total_pct / 100)
     return df
 
-# --- Cached long-form dataframe for stacked bars ---
+
 @st.cache_data
 def make_bar_df(df):
     bar_df = pd.DataFrame({
@@ -142,42 +185,38 @@ def make_bar_df(df):
     bar_df["stack_order"] = bar_df["Time Type"].map(stack_order)
     return bar_df
 
-# --- Main plotting function ---
+
 def plot_history(df):
     if df.empty:
         st.warning("No data to plot")
         return
 
-    # Fill missing test results
     if "test_result" not in df.columns:
         df["test_result"] = True
     else:
         df["test_result"] = df["test_result"].fillna(True)
 
-    # --- Sliders ---
-    st.sidebar.subheader("Step Trendline Settings")
+    # Sidebar sliders
     compute_pct = st.sidebar.slider("Threshold for compute_time steps (%)", 0, 100, 10, 1)
     total_pct = st.sidebar.slider("Threshold for total_time steps (%)", 0, 100, 10, 1)
 
-    # --- Compute step-trends (cached) ---
+    # Step trends
     df = compute_step_trends(df, compute_pct, total_pct)
-
-    # --- Long-form bar data (cached) ---
     bar_df = make_bar_df(df)
 
-    # --- Stacked bars ---
+    # Stacked bars
     bar_chart = alt.Chart(bar_df).mark_bar().encode(
         x=alt.X("date:T", title="Date", axis=alt.Axis(format="%d/%m", labelAngle=0)),
         y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
         color=alt.Color("Time Type:N",
                         scale=alt.Scale(domain=["compute_time", "initial_time"],
                                         range=["lightblue", "orange"])),
-        order=alt.Order("stack_order:O"),  # enforce stacking order
+        order=alt.Order("stack_order:O"),
         opacity=alt.condition(alt.datum.test_result==True, alt.value(1.0), alt.value(0.4)),
         tooltip=["date:T", "Time Type:N", "Time (s):Q", "test_result"]
     )
 
-    # --- Step trendlines ---
+    # Step trendlines
     compute_line = alt.Chart(df).mark_line(size=3).encode(
         x="date:T",
         y="compute_step:Q",
@@ -185,6 +224,7 @@ def plot_history(df):
         strokeDash=alt.value([5, 2]),
         tooltip=["date:T", "compute_step:Q"]
     )
+
     total_line = alt.Chart(df).mark_line(size=3).encode(
         x="date:T",
         y="total_step:Q",
@@ -193,7 +233,6 @@ def plot_history(df):
         tooltip=["date:T", "total_step:Q"]
     )
 
-    # --- Combine and render ---
     chart = (bar_chart + compute_line + total_line).properties(
         width=900,
         height=450,
@@ -202,147 +241,36 @@ def plot_history(df):
     st.altair_chart(chart, use_container_width=True)
 
 
-# Parse the history of commits for a JSON file and then call plot_history()
-def parse_file_history(file):
-    # 1. Get commits touching the file
-    commits_url = f"{GITLAB_API}/commits"
-    commits_params = {"path": file}
-    resp = requests.get(commits_url,  params=commits_params)
-    resp.raise_for_status()
-    commits = resp.json()
+# ------------------------------
+#  MAIN
+# ------------------------------
 
-    data = []
-    for commit in commits:
-        sha = commit["id"]
-
-        # 2. Get raw JSON file content at this commit
-        encoded_path = urllib.parse.quote(file, safe='')
-        file_url = f"{GITLAB_API}/files/{encoded_path}/raw"
-        file_params = {"ref": sha}
-
-        file_resp = requests.get(file_url,  params=file_params)
-
-        if file_resp.status_code == 200:
-            try:
-                # Parse JSON content and extract any field of a primitive type (int/float/str/bool
-                json_data = file_resp.json()
-                record = {}
-                for key, value in json_data.items():
-                    if isinstance(value, (int, float, str, bool)):
-                        record[key] = value
-                data.append(record)
-            except Exception as e:
-                # Could not parse JSON or fields; skip this commit
-                print(f"Skipping commit {sha} due to parse error: {e}")
-        else:
-            print(f"Skipping commit {sha} - file not found")
-
-    df = pd.DataFrame(data)
-
-    if not df.empty:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
-        # Sort by date ascending
-        df = df.sort_values("date")
-        plot_history(df)
-
-
-###############################################################################
-# MAIN 
-##############################################################################
-
-# Use the full page width layout (recommended at the top of your app)
 st.set_page_config(layout="wide")
-
 st.title("📊 NumPEx Exa-DI: Continuous Performance Benchmark on Grid5000")
 
-# Step 1/ allow the user to select a particular app/subfolder
-apps = list_subfolders_with_json_files()
-if not apps:
-    st.error("No app folders found under 'results' tree.")
-    st.stop()
+# Step 1: Select app (cached)
+apps = get_apps()
+selected_app = st.selectbox("Select an application:", apps)
 
-selected_app = st.selectbox("Select an application: ", apps)
-
-# Step 2: List the JSON files corresponding to that app/subfolder using GitLab API
-tree_url = f"{GITLAB_API}/tree"
-params = {
-    "path": f"results/{selected_app}",
-    "ref": BRANCH,
-    "per_page": 100,
-}
-
-file_list_resp = requests.get(tree_url, params=params)
-if file_list_resp.status_code != 200:
-    st.error(f"Error fetching file list: {file_list_resp.status_code}")
-    st.stop()
-
-files = file_list_resp.json()
-json_files = [f["name"] for f in files if f["type"] == "blob" and f["name"].endswith(".json")]
-
-if not json_files:
-    st.warning("No JSON files found in the folder.")
-    st.stop()
-
-
-# Step 3: Download each JSON using raw URLs
-data = []
-for filename in json_files:
-    raw_url = f"{GITLAB_ROOT}/{NAMESPACE}/{REPO}/-/raw/{BRANCH}/{RESULTS_ROOT}/{selected_app}/{filename}"
-    try:
-        response = requests.get(raw_url)
-        response.raise_for_status()
-        content = json.loads(response.text)
-        content["config"] = filename
-        data.append(content)
-    except Exception as e:
-        st.warning(f"Failed to load {filename}: {e}")
-
-# Step 4: Display table
-if data:
-    df = pd.DataFrame(data)
-    cols = ["config"] + [c for c in df.columns if c != "config"]
-    df = df[cols]    # Configure grid options to enable single row selection
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_selection(selection_mode="single", use_checkbox=True)
-    
-    # Add conditional cell styles for columns ending with 'time'
-    highlight_zero = JsCode("""
-    function(params) {
-         if (params.value === 0) {
-             return { backgroundColor: 'rgba(255, 0, 0, 0.3)' };
-         }
-            return {};
-    }
-    """)
-
-    # Add conditional cell styles for columns ending with 'result' and whose value is false (but not empty)
-    highlight_false_result = JsCode("""
-    function(params) {
-        if (params.value === false) {
-            return { backgroundColor: 'rgba(255, 0, 0, 0.3)' }; 
-        }
-        return {};
-    }
-    """)
-
-    for col in df.columns:
-        if col.endswith("_time"):
-            gb.configure_column(col, cellStyle=highlight_zero)
-        elif col.endswith("_result"):
-            gb.configure_column(col, cellStyle=highlight_false_result)    
-    
-    gridOptions = gb.build()
-
-    # Display the grid
-    grid_response = AgGrid(df, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True, allow_unsafe_jscode=True)  # <-- Latest is required for JsCode to work
-    
-    # Step 5: allow the user to select a row, and trigger the plot of history graph for the selected configuration
-    selected = grid_response.get('selected_rows', [])
-    
-    if  selected is not None and not selected.empty:  # True if list is non-empty
-        selected_row = selected.iloc[0]
-        parse_file_history (f"results/{selected_app}/{selected_row['config']}")
+if selected_app:
+    # Step 2: Load JSON files for selected app (cached)
+    df_app = load_app_jsons(selected_app)
+    if df_app.empty:
+        st.warning("No JSON files found for this app.")
     else:
-        st.write("Select a row to see details.")
-else:
-    st.info("No valid JSON files loaded.")
+        # Display table with AgGrid
+        gb = GridOptionsBuilder.from_dataframe(df_app)
+        gb.configure_selection(selection_mode="single", use_checkbox=True)
+        gridOptions = gb.build()
+        grid_response = AgGrid(df_app, gridOptions=gridOptions, height=300, fit_columns_on_grid_load=True)
+
+        selected_rows = grid_response.get("selected_rows", [])
+        if selected_rows:
+            selected_row = selected_rows[0]
+            file_path = f"results/{selected_app}/{selected_row['config']}"
+
+            # Step 3: Load full history for selected config (cached)
+            df_history = load_config_history(file_path)
+
+            # Step 4: Plot with sliders (no network requests)
+            plot_history(df_history)
