@@ -169,19 +169,16 @@ def plot_history(df):
         "test_result": df["test_result"].tolist() * 2
     })
 
-    # Ensure Time Type is categorical with explicit order (compute_time at bottom)
-    bar_df["Time Type"] = pd.Categorical(
-        bar_df["Time Type"].astype(str),
-        categories=["compute_time", "initial_time"],
-        ordered=True
-    )
+    # Explicit stacking order
+    stack_order = {"compute_time": 0, "initial_time": 1}
+    bar_df["stack_order"] = bar_df["Time Type"].map(stack_order)
 
     # --- Stacked bar chart ---
     bar_chart = alt.Chart(bar_df).mark_bar().encode(
         x=alt.X(
             "date:T",
             title="Date",
-            axis=alt.Axis(format='%d/%m', labelAngle=0)  # show day/month
+            axis=alt.Axis(format="%d/%m", labelAngle=0)
         ),
         y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
         color=alt.Color(
@@ -191,6 +188,7 @@ def plot_history(df):
                 range=["lightblue", "orange"]
             )
         ),
+        order=alt.Order("stack_order:O"),  # guarantee stacking order
         opacity=alt.condition(
             alt.datum.test_result == True,
             alt.value(1.0),
