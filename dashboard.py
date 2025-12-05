@@ -179,82 +179,85 @@ def plot_history(df):
 
 def detect_step_trend(series, threshold):
     """
-    Detects steps in the time series:
-    A new segment starts when the change exceeds `threshold`.
-    Returns a series of the same length where each value is the step mean.
+    Detects step-like segments in a time series.
+    Always returns a series of the same length as input.
     """
     segments = []
     current_segment = [series.iloc[0]]
 
     for i in range(1, len(series)):
+        current_segment.append(series.iloc[i])  # append first
+
         if abs(series.iloc[i] - series.iloc[i - 1]) > threshold:
-            # Close previous segment safely
-            if len(current_segment) > 0:
-                seg_value = float(np.mean(current_segment))
-                segments.extend([seg_value] * len(current_segment))
+            # flush current segment (includes current point)
+            seg_value = float(np.mean(current_segment))
+            segments.extend([seg_value] * len(current_segment))
             current_segment = []
 
-        current_segment.append(series.iloc[i])
-
-    # Close last segment
+    # flush any remaining segment
     if len(current_segment) > 0:
         seg_value = float(np.mean(current_segment))
         segments.extend([seg_value] * len(current_segment))
 
-    # Make sure the lengths match exactly
+    # final safety: ensure length matches
     if len(segments) != len(series):
-        # Pad or trim as ultimate fallback
-        segments = segments[:len(series)] + [segments[-1]] * max(0, len(series) - len(segments))
+        last_val = segments[-1]
+        segments = segments[:len(series)] + [last_val] * (len(series) - len(segments))
 
     return pd.Series(segments, index=series.index)
 
 
 def plot_history_new(df):
+    """
+    Plot performance history with:
+    - initial_time stacked over compute_time
+    - step-trendline for compute_time
+    - step-trendline for total_time
+    Interactive sliders allow tuning thresholds for detecting steps.
+    Assumes df is already sorted by 'date'.
+    """
 
     df = df.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df = df.dropna(subset=["date"])
 
-    # If missing test_result, assume success
+    # Fill missing test results
     if "test_result" not in df.columns:
         df["test_result"] = True
     else:
         df["test_result"] = df["test_result"].fillna(True)
 
-    # Compute totals
+    # Compute total time
     df["total_time"] = df["initial_time"] + df["compute_time"]
 
-    # --- Interactive controls ---
-    st.sidebar.subheader("Trendline Segmentation Controls")
+    # --- Streamlit sliders ---
+    st.sidebar.subheader("Step Trendline Settings")
     compute_threshold = st.sidebar.slider(
-        "Step threshold for compute_time", 
-        min_value=0.01, max_value=10.0, value=1.0, step=0.01
+        "Threshold for compute_time steps",
+        min_value=0.01, max_value=50.0, value=1.0, step=0.01
     )
     total_threshold = st.sidebar.slider(
-        "Step threshold for total_time", 
-        min_value=0.01, max_value=10.0, value=1.0, step=0.01
+        "Threshold for total_time steps",
+        min_value=0.01, max_value=50.0, value=1.0, step=0.01
     )
 
-    # --- Create step trendlines ---
-    df_sorted = df.sort_values("date")
-    df_sorted["compute_step"] = detect_step_trend(df_sorted["compute_time"], compute_threshold)
-    df_sorted["total_step"] = detect_step_trend(df_sorted["total_time"], total_threshold)
+    # --- Compute step trendlines ---
+    df["compute_step"] = detect_step_trend(df["compute_time"], compute_threshold)
+    df["total_step"] = detect_step_trend(df["total_time"], total_threshold)
 
-    # --- Prepare stacked-bar long-form ---
+    # --- Prepare long-form for stacked bars ---
     bar_df = pd.DataFrame({
-        "date": df_sorted["date"].tolist() * 2,
-        "Time Type": ["compute_time"] * len(df_sorted) + ["initial_time"] * len(df_sorted),
-        "Time (s)": df_sorted["compute_time"].tolist() + df_sorted["initial_time"].tolist(),
-        "test_result": df_sorted["test_result"].tolist() * 2
+        "date": df["date"].tolist() * 2,
+        "Time Type": ["compute_time"] * len(df) + ["initial_time"] * len(df),
+        "Time (s)": df["compute_time"].tolist() + df["initial_time"].tolist(),
+        "test_result": df["test_result"].tolist() * 2
     })
 
-    # Stacked bar chart
+    # --- Stacked bar chart ---
     bar_chart = alt.Chart(bar_df).mark_bar().encode(
         x=alt.X("date:T", title="Date"),
         y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
         color=alt.Color("Time Type:N", scale=alt.Scale(
             domain=["compute_time", "initial_time"],
-            range=["#1f77b4", "#ff7f0e"]  # blue + orange
+            range=["lightblue", "orange"]
         )),
         opacity=alt.condition(
             alt.datum.test_result == True,
@@ -264,25 +267,27 @@ def plot_history_new(df):
         tooltip=["date:T", "Time Type:N", "Time (s):Q", "test_result"]
     )
 
-    # --- Step Trendlines ---
-    compute_line = alt.Chart(df_sorted).mark_line(size=3).encode(
+    # --- Step trendline for compute_time ---
+    compute_line = alt.Chart(df).mark_line(size=3).encode(
         x="date:T",
         y="compute_step:Q",
-        color=alt.value("#1f77b4"),
+        color=alt.value("cyan"),
         strokeDash=alt.value([5, 2]),
         tooltip=["date:T", "compute_step:Q"]
     )
 
-    total_line = alt.Chart(df_sorted).mark_line(size=3).encode(
+    # --- Step trendline for total_time ---
+    total_line = alt.Chart(df).mark_line(size=3).encode(
         x="date:T",
         y="total_step:Q",
-        color=alt.value("#000000"),
+        color=alt.value("yellow"),
         strokeDash=alt.value([4, 4]),
         tooltip=["date:T", "total_step:Q"]
     )
 
+    # --- Combine ---
     chart = (bar_chart + compute_line + total_line).properties(
-        width=800,
+        width=900,
         height=450,
         title="Performance History with Step Trendlines"
     )
