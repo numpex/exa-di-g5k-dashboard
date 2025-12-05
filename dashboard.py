@@ -167,7 +167,6 @@ def load_config_history(file_path):
 @st.cache_data
 def compute_step_trends(df, compute_pct, total_pct):
     df = df.copy()
-    df["total_time"] = df["initial_time"] + df["compute_time"]
     df["compute_step"] = detect_step_trend(df["compute_time"], compute_pct / 100)
     df["total_step"] = detect_step_trend(df["total_time"], total_pct / 100)
     return df
@@ -190,6 +189,19 @@ def plot_history(df):
     if df.empty:
         st.warning("No data to plot")
         return
+
+    # 🔥 Ensure missing fields exist
+    if "initial_time" not in df.columns:
+        df["initial_time"] = 0.0
+
+    if "compute_time" not in df.columns:
+        st.error("Missing compute_time in data. Cannot plot.")
+        return
+
+    # Always ensure consistent total_time
+    df["total_time"] = df["compute_time"].astype(float) + df["initial_time"].astype(float)
+    df["compute_time"] = df["compute_time"].astype(float)
+    df["initial_time"] = df["initial_time"].astype(float)
 
     if "test_result" not in df.columns:
         df["test_result"] = True
