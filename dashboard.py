@@ -42,6 +42,7 @@ import base64
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
 import altair as alt
+import ruptures as rpt
 import urllib.parse
 
 # 🔧 CONFIGURATION
@@ -175,7 +176,148 @@ def plot_history(df):
     )
 
     st.altair_chart(chart, use_container_width=True)
-    
+
+
+def plot_history_new(df):
+    """
+    Plot stacked performance bars (initial_time + compute_time) and trendlines:
+      - total_time linear regression (optional)
+      - step-wise flat-by-stages trendline (change-point detection)
+
+    Failed tests appear in red. Missing test_result = True.
+    """
+
+    df = df.copy()
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df = df.dropna(subset=['date'])
+
+    # Fill missing test_result as True
+    df['test_result'] = df.get('test_result', True)
+    df['test_result'] = df['test_result'].fillna(True)
+
+    # Compute total_time
+    df["total_time"] = df["initial_time"] + df["compute_time"]
+
+    # Prepare long form for stacked bars
+    rows = []
+    for _, row in df.iterrows():
+        rows.append({
+            'date': row['date'],
+            'Time Type': 'initial_time',
+            'Time (s)': row['initial_time'],
+            'test_result': row['test_result']
+        })
+        rows.append({
+            'date': row['date'],
+            'Time Type': 'compute_time',
+            'Time (s)': row['compute_time'],
+            'test_result': row['test_result']
+        })
+        rows.append({
+            'date': row['date'],
+            'Time Type': 'total_time',
+            'Time (s)': row['total_time'],
+            'test_result': row['test_result']
+        })
+
+    plot_df = pd.DataFrame(rows)
+
+    # Color logic
+    plot_df['color_category'] = plot_df.apply(
+        lambda row: f"FAILED - {row['Time Type']}"
+        if row['test_result'] is False else row['Time Type'],
+        axis=1
+    )
+
+    # ------------------------------
+    # BAR CHART (stacked, as before)
+    # ------------------------------
+    bar_chart = alt.Chart(
+        plot_df[plot_df["Time Type"] != "total_time"]
+    ).mark_bar().encode(
+        x=alt.X('date:T',
+                title='Date',
+                axis=alt.Axis(format='%Y-%m-%d %H:%M:%S', labelAngle=0),
+                scale=alt.Scale(nice='day')),
+        y=alt.Y('sum(Time (s)):Q', stack='zero'),
+        color=alt.Color(
+            'color_category:N',
+            title='Result',
+            scale=alt.Scale(
+                domain=[
+                    'initial_time', 'compute_time',
+                    'FAILED - initial_time', 'FAILED - compute_time'
+                ],
+                range=[
+                    '#1f77b4',  # OK initial
+                    '#2ca02c',  # OK compute
+                    '#d62728',  # FAIL initial
+                    '#8c564b'   # FAIL compute
+                ]
+            )
+        ),
+        tooltip=['date:T', 'Time Type', 'Time (s)', 'test_result']
+    )
+
+    # -------------------------------------------------------------
+    # TRENDLINE 1 — Total time linear regression (very simple line)
+    # -------------------------------------------------------------
+    df_passed_total = plot_df[
+        (plot_df['test_result'] == True) &
+        (plot_df['Time Type'] == 'total_time')
+    ]
+
+    trendline_linear = alt.Chart(df_passed_total).transform_regression(
+        'date', 'Time (s)'
+    ).mark_line(size=3, color='black', strokeDash=[4, 4]).encode(
+        x='date:T',
+        y='Time (s):Q'
+    )
+
+    # -------------------------------------------------------------
+    # TRENDLINE 2 — Step-wise trendline (flat by stages)
+    # -------------------------------------------------------------
+    df_passed_sorted = df_passed_total.sort_values("date")
+    times = df_passed_sorted["Time (s)"].to_numpy()
+
+    # Change-point detection with PELT
+    model = rpt.Pelt(model="rbf").fit(times)
+    breakpoints = model.predict(pen=5)  # tune "pen" depending on noise level
+
+    # Build step-like segments
+    seg_rows = []
+    dates = df_passed_sorted["date"].to_numpy()
+    start = 0
+    for end in breakpoints:
+        segment_dates = dates[start:end]
+        segment_mean = times[start:end].mean()
+        for d in segment_dates:
+            seg_rows.append({
+                "date": d,
+                "Time (s)": segment_mean
+            })
+        start = end
+
+    seg_df = pd.DataFrame(seg_rows)
+
+    step_trendline = alt.Chart(seg_df).mark_line(
+        size=3, color="orange"
+    ).encode(
+        x='date:T',
+        y='Time (s):Q'
+    )
+
+    # -------------------------------------------------------------
+    # Combine everything
+    # -------------------------------------------------------------
+    chart = (bar_chart + trendline_linear + step_trendline).properties(
+        width=800,
+        height=450,
+        title="Performance History per Commit"
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
 # Parse the history of commits for a JSON file and then call plot_history()
 def parse_file_history(file):
     # 1. Get commits touching the file
@@ -217,7 +359,7 @@ def parse_file_history(file):
         df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_convert(None)
         # Sort by date ascending
         df = df.sort_values("date")
-        plot_history(df)
+        plot_history_new(df)
 
 
 ###############################################################################

@@ -3,3 +3,4 @@ pandas
 requests
 streamlit-aggrid>=0.3.4
 altair
+ruptures
