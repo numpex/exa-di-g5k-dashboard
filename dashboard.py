@@ -252,10 +252,14 @@ def plot_history_new(df):
     bar_chart = alt.Chart(bar_df).mark_bar().encode(
         x=alt.X("date:T", title="Date"),
         y=alt.Y("Time (s):Q", stack="zero", title="Time (s)"),
-        color=alt.Color("Time Type:N", scale=alt.Scale(
-            domain=["compute_time", "initial_time"],
-            range=["lightblue", "orange"]
-        )),
+        color=alt.Color(
+            "Time Type:N",
+            scale=alt.Scale(
+                domain=["compute_time", "initial_time"],  # compute_time at bottom
+                range=["lightblue", "orange"]
+            ),
+            sort=["compute_time", "initial_time"]  # enforce order
+        ),
         opacity=alt.condition(
             alt.datum.test_result == True,
             alt.value(1.0),
