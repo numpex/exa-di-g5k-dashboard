@@ -269,7 +269,7 @@ def plot_history_new(df):
 
     trendline_linear = alt.Chart(df_passed_total).transform_regression(
         'date', 'Time (s)'
-    ).mark_line(size=3, color='black', strokeDash=[4, 4]).encode(
+    ).mark_line(size=3, color='purple', strokeDash=[4, 4]).encode(
         x='date:T',
         y='Time (s):Q'
     )
