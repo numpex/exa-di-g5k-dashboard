@@ -179,30 +179,27 @@ def plot_history(df):
 
 def detect_step_trend(series, threshold):
     """
-    Detects step-like segments in a time series.
-    Always returns a series of the same length as input.
+    Detect step-like segments in a time series.
+    Always returns a series of same length as input.
     """
+    if len(series) == 0:
+        return pd.Series([], index=series.index)
+
     segments = []
-    current_segment = [series.iloc[0]]
+    # Start first segment with first value
+    start_idx = 0
 
     for i in range(1, len(series)):
-        current_segment.append(series.iloc[i])  # append first
+        if abs(series.iloc[i] - series.iloc[i-1]) > threshold:
+            # Flush previous segment
+            seg_value = series.iloc[start_idx:i].mean()
+            segments.extend([seg_value] * (i - start_idx))
+            # Start new segment
+            start_idx = i
 
-        if abs(series.iloc[i] - series.iloc[i - 1]) > threshold:
-            # flush current segment (includes current point)
-            seg_value = float(np.mean(current_segment))
-            segments.extend([seg_value] * len(current_segment))
-            current_segment = []
-
-    # flush any remaining segment
-    if len(current_segment) > 0:
-        seg_value = float(np.mean(current_segment))
-        segments.extend([seg_value] * len(current_segment))
-
-    # final safety: ensure length matches
-    if len(segments) != len(series):
-        last_val = segments[-1]
-        segments = segments[:len(series)] + [last_val] * (len(series) - len(segments))
+    # Flush last segment
+    seg_value = series.iloc[start_idx:].mean()
+    segments.extend([seg_value] * (len(series) - start_idx))
 
     return pd.Series(segments, index=series.index)
 
