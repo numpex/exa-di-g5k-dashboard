@@ -1,5 +1,5 @@
 ##
-##  This is the code for a Streamlit application able to visualize a database of benchmark experiments previously ran on Grid'5000
+##  This is the code for a Streamlit application able to visualize a database of benchmark experiments previously ran on HPC Platforms
 
 ##  Each experiment, corresponding to a specific hardware+software configuration to be tested, is captured in a JSON file like this:
 ##        {
@@ -31,7 +31,7 @@
 ##  
 ##
 ##  Development done in the context of https://gitlab.inria.fr/numpex-pc5/wp2-co-design/proxy-geos-hc/-/issues/32
-##  See https://gitlab.inria.fr/numpex-pc5/wp2-co-design/g5k-testing/-/blob/main/ARCHITECTURE.md for a comprehensive description of the technical solution
+##  See https://gitlab.inria.fr/numpex-pc5/wp2-co-design/bendi/-/blob/main/ARCHITECTURE.md for a comprehensive description of the technical solution
 ##
 
 import streamlit as st
@@ -44,7 +44,7 @@ import altair as alt
 
 # 🔧 CONFIGURATION
 NAMESPACE = "numpex-pc5/wp2-co-design"
-REPO = "g5k-testing"
+REPO = "bendi"
 PROJECT_ID = "60556"
 BRANCH = "main"
 GITLAB_ROOT = "https://gitlab.inria.fr"
@@ -257,7 +257,7 @@ def plot_history(df):
 # ------------------------------
 
 st.set_page_config(layout="wide")
-st.title("📊 NumPEx Exa-DI: Continuous Performance Benchmark on Grid5000")
+st.title("📊 NumPEx Exa-DI Performance Benchmarks")
 
 # Step 1: Select app
 apps = get_apps()
